@@ -1,1 +1,1 @@
-# qc_ml_workshop_2024
+# Repository for the QuakeCore Annual Meeting ML Workshop
