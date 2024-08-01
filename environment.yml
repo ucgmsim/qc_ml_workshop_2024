@@ -5,15 +5,6 @@ channels:
 dependencies:
   - python=3.11
   - numpy
-  - scipy
-  - seaborn
-  - ipykernel
-  - ipywidgets
-  - ipyleaflet
-  - matplotlib
   - pandas
-  - pyproj
-  - xlrd
-  - sympy
   - scikit-learn
-  - jupyter
+  - matplotlib
