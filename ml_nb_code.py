@@ -4,12 +4,19 @@ import pandas as pd
 
 from sklearn import datasets
 from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import PolynomialFeatures,StandardScaler, OneHotEncoder, LabelEncoder
-from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import (
+    PolynomialFeatures,
+    StandardScaler,
+    OneHotEncoder,
+    LabelEncoder,
+)
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import accuracy_score
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from matplotlib.colors import ListedColormap
 import ipywidgets as widgets
+from graphviz import Digraph
+from IPython.display import display
 
 
 def _split_feature(fd1, fd2, fd3, check, sl1, sl2, sl3, df):
@@ -127,7 +134,7 @@ def _split_feature(fd1, fd2, fd3, check, sl1, sl2, sl3, df):
     plt.show()
 
 
-def decision_tree():
+def get_safe_unsafe_data():
     # Create the dataframe
     data = [
         {"load_capacity": 50, "material_type": "Concrete", "age": 10, "safe": False},
@@ -139,6 +146,12 @@ def decision_tree():
         {"load_capacity": 35, "material_type": "Steel", "age": 3, "safe": True},
     ]
     df = pd.DataFrame(data)
+
+    return df
+
+
+def decision_tree_old():
+    df = get_safe_unsafe_data()
 
     # Create the interactive widgets
     fd1 = widgets.widgets.Dropdown(
@@ -354,11 +367,11 @@ def linear_regression_fitting_example():
     np.random.seed(5)
 
     # Create toggle buttons
-    toggle1 = widgets.Checkbox(value=False, description="Toggle 1")
+    toggle1 = widgets.Checkbox(value=False, description="Show fit 1")
 
-    toggle2 = widgets.Checkbox(value=False, description="Toggle 2")
+    toggle2 = widgets.Checkbox(value=False, description="Show fit 2")
 
-    toggle3 = widgets.Checkbox(value=False, description="Toggle 3")
+    toggle3 = widgets.Checkbox(value=False, description="Show fit 3")
     hbox = widgets.HBox([toggle1, toggle2, toggle3])
     # display(toggle1, toggle2, toggle3)
     display(hbox)
@@ -498,12 +511,23 @@ def get_nan_example():
 
 
 def plot_single_decision_boundary_heart(
-    heart_df, model, feature1, feature2, thal_key, features, thal_keys
+    heart_df,
+    model,
+    feature1,
+    feature2,
+    thal_key,
+    features,
+    thal_keys,
+    ax,
+    val_df=None,
+    legend=False,
 ):
     m = heart_df[thal_key] == 1
+    cur_heart_df = heart_df.copy()
+    cur_heart_df = cur_heart_df.loc[m]
 
-    x_min, x_max = heart_df[feature1].min() - 0.5, heart_df[feature1].max() + 0.5
-    y_min, y_max = heart_df[feature2].min() - 0.5, heart_df[feature2].max() + 0.5
+    x_min, x_max = heart_df[feature1].min() - 1.0, heart_df[feature1].max() + 1.0
+    y_min, y_max = heart_df[feature2].min() - 1.0, heart_df[feature2].max() + 1.0
 
     # Generate the decision boundary
     xx, yy = np.meshgrid(
@@ -518,28 +542,72 @@ def plot_single_decision_boundary_heart(
     Z = Z.reshape(xx.shape)
 
     # Plot the decision boundary
-    plt.contourf(xx, yy, Z, alpha=0.3, cmap=ListedColormap(("red", "blue")))
-    plt.scatter(
-        heart_df.loc[m, [feature1]].values,
-        heart_df.loc[m, [feature2]].values,
-        c=heart_df.loc[m, "target_encoded"],
-        edgecolor="k",
-        cmap=ListedColormap(("red", "blue")),
+    ax.contourf(
+        xx, yy, Z, alpha=0.3, cmap=ListedColormap(("green", "red")), vmin=0, vmax=1
     )
-    plt.xlabel(feature1)
-    plt.ylabel(feature2)
-    plt.title(f"Decision Boundary thal = {thal_key}, N = {m.sum()}")
+    ax.scatter(
+        cur_heart_df.loc[cur_heart_df.target_encoded == 1, [feature1]].values,
+        cur_heart_df.loc[cur_heart_df.target_encoded == 1, [feature2]].values,
+        c="red",
+        label="Train - Presence",
+        edgecolors="k",
+    )
+    ax.scatter(
+        cur_heart_df.loc[cur_heart_df.target_encoded == 0, [feature1]].values,
+        cur_heart_df.loc[cur_heart_df.target_encoded == 0, [feature2]].values,
+        c="green",
+        label="Train - No Presence",
+        edgecolors="k",
+    )
+    if val_df is not None:
+        cur_val_df = val_df.copy()
+        cur_val_df = cur_val_df.loc[cur_val_df[thal_key] == 1]
+
+        ax.scatter(
+            cur_val_df.loc[val_df.target_encoded == 1, feature1].values,
+            cur_val_df.loc[val_df.target_encoded == 1, feature2].values,
+            c="red",
+            marker="s",
+            label="Val - Presence",
+            edgecolors="k",
+        )
+        ax.scatter(
+            cur_val_df.loc[val_df.target_encoded == 0, feature1].values,
+            cur_val_df.loc[val_df.target_encoded == 0, feature2].values,
+            c="green",
+            marker="s",
+            label="Val - No Presence",
+            edgecolors="k",
+        )
+        if legend:
+            ax.legend()
+    ax.set_xlabel(feature1)
+    ax.set_ylabel(feature2)
+    ax.set_title(f"Decision Boundary thal = {thal_key}, N = {m.sum()}")
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
 
 
-def plot_decision_boundary_heart(heart_df, clf, features, figsize=(8, 6)):
+def plot_decision_boundary_heart(heart_df, clf, features, figsize=(14, 4), val_df=None):
     thal_keys = [cur_col for cur_col in heart_df.columns if cur_col.startswith("thal_")]
 
     # Plot decision boundary for each categorical value of 'thal'
-    for cur_thal_key in thal_keys:
-        fig = plt.figure(figsize=figsize)
+    fig, axs = plt.subplots(1, 3, figsize=figsize)
+    for ix, (cur_thal_key, cur_ax) in enumerate(zip(thal_keys, axs)):
+        # fig = plt.figure(figsize=figsize)
         plot_single_decision_boundary_heart(
-            heart_df, clf, "thalach", "oldpeak", cur_thal_key, features, thal_keys
+            heart_df,
+            clf,
+            "thalach",
+            "oldpeak",
+            cur_thal_key,
+            features,
+            thal_keys,
+            cur_ax,
+            val_df=val_df,
+            legend=ix == 0,
         )
+    fig.tight_layout()
 
 
 def get_prepped_heart_df():
@@ -563,25 +631,52 @@ def get_prepped_heart_df():
     heart_df["target_encoded"] = label_encoder.fit_transform(heart_df["target"])
 
     features_keys = numerical_features + list(encoder.get_feature_names_out())
-    return heart_df, features_keys
+    return heart_df, features_keys, label_encoder
 
 
 def hyperparam_tuning_example():
-    heart_df, feature_keys = get_prepped_heart_df()
+    heart_df, feature_keys, _ = get_prepped_heart_df()
 
     # Split into training and validation sets
-    X_train, X_val, y_train, y_val = train_test_split(heart_df[feature_keys],
-                                                      heart_df['target_encoded'],
-                                                      test_size=0.2, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(
+        heart_df[feature_keys],
+        heart_df["target_encoded"],
+        test_size=0.2,
+        random_state=42,
+    )
+
+    train_df = pd.concat([X_train, y_train], axis=1)
+    val_df = pd.concat([X_val, y_val], axis=1)
 
     # Create widgets for hyperparameters
-    style = {'description_width': 'initial'}
-    max_depth = widgets.IntSlider(value=10, min=1, max=10, step=1,
-                                  description='Max Depth:', style=style)
-    min_samples_split = widgets.IntSlider(value=2, min=2, max=25, step=1,
-                                          description='Min Samples Split:', style=style)
-    min_samples_leaf = widgets.IntSlider(value=1, min=1, max=25, step=1,
-                                         description='Min Samples Leaf:', style=style)
+    style = {"description_width": "initial"}
+    max_depth = widgets.IntSlider(
+        value=10,
+        min=1,
+        max=10,
+        step=1,
+        description="Max Depth:",
+        style=style,
+        continuous_update=False,
+    )
+    min_samples_split = widgets.IntSlider(
+        value=2,
+        min=2,
+        max=25,
+        step=1,
+        description="Min Samples Split:",
+        style=style,
+        continuous_update=False,
+    )
+    min_samples_leaf = widgets.IntSlider(
+        value=1,
+        min=1,
+        max=25,
+        step=1,
+        description="Min Samples Leaf:",
+        style=style,
+        continuous_update=False,
+    )
     hbox = widgets.HBox([max_depth, min_samples_split, min_samples_leaf])
 
     # Create an output widget to display the plot
@@ -596,34 +691,605 @@ def hyperparam_tuning_example():
                 max_depth=max_depth.value,
                 min_samples_split=min_samples_split.value,
                 min_samples_leaf=min_samples_leaf.value,
-                random_state=42
+                random_state=42,
             )
 
             # Train the model on the training data
-            clf.fit(X_train, y_train)
-
-            # Get model predictions
-            y_pred = clf.predict(X_val)
+            clf.fit(train_df[feature_keys], train_df["target_encoded"])
 
             # Calculate accuracy
-            val_acc = accuracy_score(y_val, y_pred)
-            train_acc = accuracy_score(y_train, clf.predict(X_train))
+            val_acc = accuracy_score(
+                val_df["target_encoded"], clf.predict(val_df[feature_keys])
+            )
+            train_acc = accuracy_score(
+                train_df["target_encoded"], clf.predict(train_df[feature_keys])
+            )
             print(f"Training Accuracy: {train_acc:.2f}")
             print(f"Validation Accuracy: {val_acc:.2f}")
 
             # Visualize the decision tree
-            fig, ax = plt.subplots(figsize=(10, 6))
-            plot_tree(clf, filled=True, ax=ax, feature_names=feature_keys,
-                      class_names=["No Presence", "Presence"], impurity=False)
+            fig, ax = plt.subplots(figsize=(14, 4))
+            plot_tree(
+                clf,
+                filled=True,
+                ax=ax,
+                feature_names=feature_keys,
+                class_names=["No Presence", "Presence"],
+                impurity=False,
+            )
+
+            plot_decision_boundary_heart(train_df, clf, feature_keys, val_df=val_df)
             plt.show()
 
     # Attach the update_plot function to the widgets
-    max_depth.observe(update_plot, names='value')
-    min_samples_split.observe(update_plot, names='value')
-    min_samples_leaf.observe(update_plot, names='value')
+    max_depth.observe(update_plot, names="value")
+    min_samples_split.observe(update_plot, names="value")
+    min_samples_leaf.observe(update_plot, names="value")
 
     # Display the widgets and the output plot
     display(hbox, output)
 
     # Call the function initially to display the plot
     update_plot()
+
+
+def decision_tree():
+    class DecisionTreeNode:
+        def __init__(
+            self, feature=None, threshold=None, left=None, right=None, value=None
+        ):
+            self.feature = feature
+            self.threshold = threshold
+            self.left = left
+            self.right = right
+            self.value = value
+
+        def is_leaf_node(self):
+            return self.value is not None
+
+    class DecisionTree:
+        def __init__(self):
+            self.root = None
+
+        def build_tree_from_dict(self, tree_dict):
+            """
+            Recursively build the tree from a nested dictionary.
+            """
+            if "value" in tree_dict:
+                return DecisionTreeNode(value=tree_dict["value"])
+
+            node = DecisionTreeNode(
+                feature=tree_dict["feature"], threshold=tree_dict["threshold"]
+            )
+            node.left = self.build_tree_from_dict(tree_dict["left"])
+            node.right = self.build_tree_from_dict(tree_dict["right"])
+
+            return node
+
+        def build_tree(self, tree_dict):
+            """
+            Initialize the tree building process from the root.
+            """
+            self.root = self.build_tree_from_dict(tree_dict)
+
+        def predict(self, X):
+            """
+            Predict the target value for each sample in X.
+            """
+            return np.array([self._traverse_tree(x, self.root) for x in X])
+
+        def _traverse_tree(self, x, node):
+            if node.is_leaf_node():
+                return node.value
+            if x[node.feature] <= node.threshold:
+                return self._traverse_tree(x, node.left)
+            else:
+                return self._traverse_tree(x, node.right)
+
+        def _get_node(self, x, node):
+            if node.is_leaf_node():
+                return node
+            if x[node.feature] <= node.threshold:
+                return self._get_node(x, node.left)
+            else:
+                return self._get_node(x, node.right)
+
+    def visualize_tree(tree, features):
+        target_lookup = {0: "Unsafe", 1: "Safe", -1: "No Data"}
+
+        def add_nodes_edges(
+            tree,
+            features,
+            dot=None,
+        ):
+            # Create Digraph object
+            if dot is None:
+                dot = Digraph()
+                dot.node(
+                    name=str(tree),
+                    label=f"{features[tree.feature]} <= {tree.threshold}",
+                )
+
+            # Add nodes
+            if tree.left:
+                dot.node(
+                    name=str(tree.left),
+                    label=(
+                        (
+                            f"{features[tree.left.feature]} <= {tree.left.threshold}"
+                            if tree.left.feature != 2
+                            else features[2]
+                        )
+                        if not tree.left.is_leaf_node()
+                        else f"Leaf Value: {target_lookup[tree.left.value]}"
+                    ),
+                )
+                dot.edge(str(tree), str(tree.left), label="True")
+                dot = add_nodes_edges(tree.left, features, dot=dot)
+
+            if tree.right:
+                dot.node(
+                    name=str(tree.right),
+                    label=(
+                        (
+                            f"{features[tree.right.feature]} <= {tree.right.threshold}"
+                            if tree.right.feature != 2
+                            else features[2]
+                        )
+                        if not tree.right.is_leaf_node()
+                        else f"Leaf Value: {target_lookup[tree.right.value]}"
+                    ),
+                )
+                dot.edge(str(tree), str(tree.right), label="False")
+                dot = add_nodes_edges(tree.right, features, dot=dot)
+
+            return dot
+
+        # Add nodes recursively and create a dot object
+        dot = add_nodes_edges(tree.root, features)
+        return dot
+
+    def plot(tree):
+
+        fig, (ax_steel, ax_concrete) = plt.subplots(1, 2, figsize=(12, 6))
+
+        ax_steel.set_title("Steel")
+        ax_concrete.set_title("Concrete")
+
+        ax_steel.set_xlim(20, 80)
+        ax_steel.set_xlabel("Load Capacity")
+        ax_concrete.set_xlim(20, 80)
+        ax_concrete.set_xlabel("Load Capacity")
+
+        ax_steel.set_ylim(0, 40)
+        ax_steel.set_ylabel("Age")
+        ax_concrete.set_ylim(0, 40)
+        ax_concrete.set_ylabel("Age")
+
+        if tree.root.feature == 0:
+            ax_steel.axvline(tree.root.threshold, color="black", linestyle="--")
+            ax_concrete.axvline(tree.root.threshold, color="black", linestyle="--")
+
+            if tree.root.left.feature == 1:
+                ax_steel.plot(
+                    [0, tree.root.threshold],
+                    [tree.root.left.threshold, tree.root.left.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+                ax_concrete.plot(
+                    [0, tree.root.threshold],
+                    [tree.root.left.threshold, tree.root.left.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+            elif tree.root.left.feature == 0:
+                ax_steel.plot(
+                    [tree.root.left.threshold, tree.root.left.threshold],
+                    [0, tree.root.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+                ax_concrete.plot(
+                    [tree.root.left.threshold, tree.root.left.threshold],
+                    [0, tree.root.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+
+            if tree.root.right.feature == 1:
+                ax_steel.plot(
+                    [tree.root.threshold, 100],
+                    [tree.root.right.threshold, tree.root.right.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+                ax_concrete.plot(
+                    [tree.root.threshold, 100],
+                    [tree.root.right.threshold, tree.root.right.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+            elif tree.root.right.feature == 0:
+                ax_steel.plot(
+                    [tree.root.right.threshold, tree.root.right.threshold],
+                    [0, tree.root.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+                ax_concrete.plot(
+                    [tree.root.right.threshold, tree.root.right.threshold],
+                    [0, tree.root.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+
+        elif tree.root.feature == 1:
+            ax_steel.axhline(tree.root.threshold, color="black", linestyle="--")
+            ax_concrete.axhline(tree.root.threshold, color="black", linestyle="--")
+
+            if tree.root.left.feature == 0:
+                ax_steel.plot(
+                    [tree.root.left.threshold, tree.root.left.threshold],
+                    [0, tree.root.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+                ax_concrete.plot(
+                    [tree.root.left.threshold, tree.root.left.threshold],
+                    [0, tree.root.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+            elif tree.root.left.feature == 1:
+                ax_steel.plot(
+                    [0, tree.root.threshold],
+                    [tree.root.left.threshold, tree.root.left.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+                ax_concrete.plot(
+                    [0, tree.root.threshold],
+                    [tree.root.left.threshold, tree.root.left.threshold],
+                    color="black",
+                    linestyle="--",
+                )
+
+        elif tree.root.feature == 2:
+            if tree.root.left.feature == 0:
+                ax_concrete.axvline(
+                    tree.root.left.threshold, color="black", linestyle="--"
+                )
+            elif tree.root.left.feature == 1:
+                ax_concrete.axhline(
+                    tree.root.left.threshold, color="black", linestyle="--"
+                )
+
+            if tree.root.right.feature == 0:
+                ax_steel.axvline(
+                    tree.root.right.threshold, color="black", linestyle="--"
+                )
+            elif tree.root.right.feature == 1:
+                ax_steel.axhline(
+                    tree.root.right.threshold, color="black", linestyle="--"
+                )
+
+        return fig, ax_steel, ax_concrete
+
+    def run(
+        df: pd.DataFrame,
+        root_feature: str,
+        root_treshold: float,
+        left_feature: str,
+        left_treshold: float,
+        right_feature: str,
+        right_treshold: float,
+    ):
+
+        # Yes, `is_concrete` is correct
+        feature_names = ["load_capacity", "age", "is_concrete"]
+        data = [
+            (cur_row.load_capacity, cur_row.age, int(cur_row.material_type == "Steel"))
+            for _, cur_row in df.iterrows()
+        ]
+        target_names = ["unsafe", "safe"]
+        target = [int(cur_row.safe) for _, cur_row in df.iterrows()]
+
+        tree_structure = {
+            "feature": feature_names.index(root_feature),
+            "threshold": root_treshold if root_feature != "is_concrete" else 0.5,
+            "left": {
+                "feature": feature_names.index(left_feature),
+                "threshold": left_treshold if left_feature != "is_concrete" else 0.5,
+                "left": {"value": -1},
+                "right": {"value": -1},
+            },
+            "right": {
+                "feature": feature_names.index(right_feature),
+                "threshold": right_treshold if right_feature != "is_concrete" else 0.5,
+                "left": {"value": -1},
+                "right": {"value": -1},
+            },
+        }
+
+        # Initialize the decision tree
+        tree = DecisionTree()
+
+        # Build the tree using the nested dictionary
+        tree.build_tree(tree_structure)
+
+        leaf_nodes = [
+            (tree._get_node(cur_x, tree.root), cur_target)
+            for cur_x, cur_target in zip(data, target)
+        ]
+
+        leaf_targets = {}
+        for cur_node, cur_target in leaf_nodes:
+            if cur_node not in leaf_targets:
+                leaf_targets[cur_node] = []
+            leaf_targets[cur_node].append(cur_target)
+
+        for cur_node, cur_targets in leaf_targets.items():
+            if cur_targets.count(0) > cur_targets.count(1):
+                cur_node.value = 0
+            else:
+                cur_node.value = 1
+
+        # Visualize the tree
+        dot = visualize_tree(tree, features=feature_names)
+        display(dot)
+
+        fig, ax_steel, ax_concrete = plot(tree)
+
+        x_min, x_max = 20, 80
+        y_min, y_max = 0, 40
+
+        # Generate the decision boundary
+        xx, yy = np.meshgrid(
+            np.linspace(x_min, x_max, 100), np.linspace(y_min, y_max, 100)
+        )
+
+        steel_predicts = tree.predict(
+            [(cur_l, cur_a, 1) for cur_l, cur_a in zip(xx.ravel(), yy.ravel())]
+        )
+
+        steel_predicts = steel_predicts.reshape(xx.shape)
+        ax_steel.contourf(
+            xx,
+            yy,
+            steel_predicts,
+            alpha=0.3,
+            cmap=ListedColormap(("gray", "red", "green")),
+            vmin=-1,
+            vmax=1,
+        )
+        concrete_predicts = tree.predict(
+            [(cur_l, cur_a, 0) for cur_l, cur_a in zip(xx.ravel(), yy.ravel())]
+        )
+        ax_concrete.contourf(
+            xx,
+            yy,
+            concrete_predicts.reshape(xx.shape),
+            alpha=0.3,
+            cmap=ListedColormap(("gray", "red", "green")),
+            vmin=-1,
+            vmax=1,
+        )
+
+        ax_steel.scatter(
+            df[df.material_type == "Steel"].load_capacity,
+            df[df.material_type == "Steel"].age,
+            c=df[df.material_type == "Steel"].safe,
+            cmap=ListedColormap(("red", "green")),
+            edgecolors="k",
+            s=50,
+        )
+        ax_concrete.scatter(
+            df[df.material_type == "Concrete"].load_capacity,
+            df[df.material_type == "Concrete"].age,
+            c=df[df.material_type == "Concrete"].safe,
+            cmap=ListedColormap(("red", "green")),
+            edgecolors="k",
+            s=50,
+        )
+        plt.show()
+
+    df = get_safe_unsafe_data()
+
+    root_feature = widgets.Dropdown(
+        options=["age", "load_capacity", "is_concrete"],
+        description="Root Node Feature:",
+        value="load_capacity",
+        style={"description_width": "initial"},
+    )
+    root_treshold = widgets.FloatSlider(
+        min=0,
+        max=100,
+        step=1,
+        description="Root Node Value:",
+        value=33,
+        style={"description_width": "initial"},
+    )
+
+    left_feature = widgets.Dropdown(
+        options=["age", "load_capacity", "is_concrete"],
+        description="Left Node Feature:",
+        value="age",
+        style={"description_width": "initial"},
+    )
+    left_treshold = widgets.FloatSlider(
+        min=0,
+        max=100,
+        step=1,
+        description="Left Node Value:",
+        value=26,
+        style={"description_width": "initial"},
+    )
+
+    right_feature = widgets.Dropdown(
+        options=["age", "load_capacity", "is_concrete"],
+        description="Right Node Feature:",
+        value="age",
+        style={"description_width": "initial"},
+    )
+    right_treshold = widgets.FloatSlider(
+        min=0,
+        max=100,
+        step=1,
+        description="Right Node Value:",
+        value=29,
+        style={"description_width": "initial"},
+    )
+
+    hbox = widgets.VBox(
+        [
+            widgets.HBox([root_feature, root_treshold]),
+            widgets.HBox([left_feature, left_treshold]),
+            widgets.HBox([right_feature, right_treshold]),
+        ]
+    )
+
+    # display(hbox)
+
+    # widgets.interact(
+    # widgets.interact(
+    #     run,
+    #     df=widgets.fixed(df),
+    #     root_feature=root_feature,
+    #     root_treshold=root_treshold,
+    #     left_feature=left_feature,
+    #     left_treshold=left_treshold,
+    #     right_feature=right_feature,
+    #     right_treshold=right_treshold,
+    # )
+
+    output = widgets.interactive_output(
+        run,
+        {
+            "df": widgets.fixed(df),
+            "root_feature": root_feature,
+            "root_treshold": root_treshold,
+            "left_feature": left_feature,
+            "left_treshold": left_treshold,
+            "right_feature": right_feature,
+            "right_treshold": right_treshold,
+        },
+    )
+
+    display(hbox, output)
+
+
+def run_train_val_split_example():
+    output = widgets.Output()
+
+    # Step 3: Define a function to handle the interaction and update the output
+    def run(val_size, seed):
+        heart_df, feature_keys = get_prepped_heart_df()
+
+        # Split into training and validation sets
+        X_train, X_val, y_train, y_val = train_test_split(
+            heart_df[feature_keys],
+            heart_df["target_encoded"],
+            test_size=val_size,
+            random_state=seed,
+        )
+        train_df = pd.concat([X_train, y_train], axis=1)
+        val_df = pd.concat([X_val, y_val], axis=1)
+
+        # Create a Decision Tree classifier
+        clf = DecisionTreeClassifier(random_state=seed)
+
+        # Train the model on the training data
+        clf.fit(train_df[feature_keys], train_df["target_encoded"])
+
+        # Get model predictions
+        train_y_pred = clf.predict(train_df[feature_keys])
+        val_y_pred = clf.predict(val_df[feature_keys])
+
+        # Calculate accuracy
+        train_accuracy = accuracy_score(train_df["target_encoded"], train_y_pred)
+        val_accuracy = accuracy_score(val_df["target_encoded"], val_y_pred)
+
+        with output:
+            print(f"----- Validation Size: {val_size:.2f}, Seed: {seed} -----")
+            print(f"Number of training samples: {len(train_df)}")
+            print(f"Number of validation samples: {len(val_df)}")
+
+            print(f"Training Accuracy: {train_accuracy:.4f}")
+            print(f"Validation Accuracy: {val_accuracy:.4f}")
+            print(f"--------------------------------------")
+
+    widgets.interact(
+        run,
+        val_size=widgets.FloatSlider(
+            value=0.2,
+            min=0.05,
+            max=0.95,
+            step=0.05,
+            description="Validation size:",
+            style={"description_width": "initial"},
+            continuous_update=False,
+        ),
+        seed=widgets.IntSlider(
+            min=0,
+            max=100,
+            step=1,
+            value=42,
+            continuous_update=False,
+            description="Seed",
+        ),
+    )
+
+    display(output)
+
+
+def run_cv_example():
+    heart_df, feature_keys, _ = get_prepped_heart_df()
+
+    output = widgets.Output()
+
+    def run(n_splits: int, seed: int):
+        # Create a Decision Tree classifier
+        clf = DecisionTreeClassifier(random_state=seed)
+
+        # Use cross-validation to evaluate the model
+        cur_heart_df = heart_df.sample(frac=1, random_state=seed)
+        cv_scores = cross_val_score(
+            clf, heart_df[feature_keys], cur_heart_df["target_encoded"], cv=n_splits
+        )
+
+        with output:
+            # Print the cross-validation scores
+            print(f"------ Number of splits: {n_splits}, Seed: {seed} -------")
+            print(f"Number of samples per split: {len(heart_df) // n_splits}")
+            print(
+                f"Cross-validation scores: {', '.join([f'{cur_score:.4f}' for cur_score in cv_scores])}"
+            )
+            print(f"Mean cross-validation score: {cv_scores.mean():.4f}")
+            print(
+                f"Standard deviation of cross-validation scores: {cv_scores.std():.4f}"
+            )
+            print(f"---------------------------------------------------")
+
+    widgets.interact(
+        run,
+        n_splits=widgets.IntSlider(
+            value=5,
+            min=2,
+            max=10,
+            step=1,
+            description="Number of splits:",
+            style={"description_width": "initial"},
+            continuous_update=False,
+        ),
+        seed=widgets.IntSlider(
+            min=0,
+            max=100,
+            step=1,
+            value=42,
+            continuous_update=False,
+            description="Seed",
+        ),
+    )
+
+    display(output)
