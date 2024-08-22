@@ -1184,7 +1184,7 @@ def run_train_val_split_example():
 
     # Step 3: Define a function to handle the interaction and update the output
     def run(val_size, seed):
-        heart_df, feature_keys = get_prepped_heart_df()
+        heart_df, feature_keys, _ = get_prepped_heart_df()
 
         # Split into training and validation sets
         X_train, X_val, y_train, y_val = train_test_split(
