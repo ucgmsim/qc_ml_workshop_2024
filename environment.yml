@@ -8,4 +8,6 @@ dependencies:
   - pandas
   - scikit-learn
   - matplotlib
-  - networkx
+  - graphviz
+  - python-graphviz
+
