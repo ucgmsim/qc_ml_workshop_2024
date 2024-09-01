@@ -45,15 +45,6 @@ def load_weather_data(
     avail_cat_features = ["cloud_cover", "season", "location_type"]
     avail_num_features = list(set(avail_features) - set(avail_cat_features))
 
-    # Add some fake missing values
-    n_rand_values = 100
-    if with_missing_values:
-        rand_rows = np.random.choice(df.shape[0], n_rand_values)
-        rand_cols = np.random.choice(df.shape[1] - 1, n_rand_values)
-
-        for i in range(n_rand_values):
-            df.iat[rand_rows[i], rand_cols[i]] = np.nan
-
     if features is not None:
         df = df[features + ["target"]]
 
@@ -62,11 +53,20 @@ def load_weather_data(
         target_types = df["target"].unique()
         for cur_target in target_types:
             cur_df = df.loc[df["target"] == cur_target].sample(
-                frac=np.random.uniform(0.08, 0.12), random_state=random_state
+                frac=np.random.uniform(0.09, 0.11), random_state=random_state
             )
             results.append(cur_df)
 
         df = pd.concat(results).sample(frac=1).reset_index(drop=True)
+
+    # Add some fake missing values
+    n_rand_values = 100
+    if with_missing_values:
+        rand_rows = np.random.choice(df.shape[0], n_rand_values)
+        rand_cols = np.random.choice(df.shape[1] - 1, n_rand_values)
+
+        for i in range(n_rand_values):
+            df.iat[rand_rows[i], rand_cols[i]] = np.nan
 
     if pre_process:
         return run_weather_preprocess(df)
@@ -290,7 +290,7 @@ def plot_decision_boundaries(
 ):
     label_mapping = {i: label for i, label in enumerate(label_encoder.classes_)}
 
-    fig, axs = plt.subplots(1, 3, figsize=(3 * 8, 6))
+    fig, axs = plt.subplots(1, 3, figsize=(3 * 8, 8))
     cat_features = [
         cur_feature for cur_feature in features if cur_feature.startswith("location")
     ]
@@ -311,7 +311,7 @@ def plot_decision_boundaries(
         )
         # if ix > 0:
         #     cur_ax.set_yticklabels([])
-        fig.tight_layout()
+    fig.tight_layout()
 
 
 ### Overfitting Example
