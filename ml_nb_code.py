@@ -380,12 +380,6 @@ def linear_regression_fitting_example():
 
     @output.capture(clear_output=True, wait=True)
     def gen_plot(*args):
-        # import datetime
-        # print(f"-------------------------")
-        # print(f"{datetime.datetime.now()}")
-        # print(f"{toggle1.value}")
-        # print(f"{toggle2.value}")
-        # print(f"{toggle3.value}")
         df = get_fs_data(w1=-0.7)
         df = df[::5]
         x = np.linspace(df.x1.min(), df.x1.max(), 1000)
