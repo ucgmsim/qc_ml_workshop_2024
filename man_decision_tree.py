@@ -338,7 +338,7 @@ def run_man_decision_tree():
             # Removing levels
             n_new_levels = int(n_levels.value)
             n_existing_levels = len(global_widgets)
-            print(f"Existing levels: {n_existing_levels}, New levels: {n_new_levels}")
+            # print(f"Existing levels: {n_existing_levels}, New levels: {n_new_levels}")
             if n_existing_levels > n_new_levels:
                 for i in range(n_new_levels, n_existing_levels):
                     del global_widgets[i]
@@ -362,6 +362,10 @@ def run_man_decision_tree():
 
             dot = visualize_tree(tree)
             display(dot)
+
+            pred_df = tree.get_predictions(df[features]).sort_index()
+            acc = (pred_df["prediction"] == df["target"]).mean()
+            print(f"Accuracy: {acc:.2f}")
 
             fig, ax = generate_man_decision_boundary_plot(tree, df, show_values=True)
             display(fig)

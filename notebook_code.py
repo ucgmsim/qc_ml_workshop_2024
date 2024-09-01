@@ -66,7 +66,7 @@ def load_weather_data(
             )
             results.append(cur_df)
 
-        df = pd.concat(results).reset_index(drop=True)
+        df = pd.concat(results).sample(frac=1).reset_index(drop=True)
 
     if pre_process:
         return run_weather_preprocess(df)
@@ -395,7 +395,7 @@ def manual_hyperparam_tuning():
     max_depth = widgets.IntSlider(
         value=10,
         min=1,
-        max=10,
+        max=8,
         step=1,
         description="Max Depth:",
         style=style,
